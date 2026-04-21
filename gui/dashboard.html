@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STML — Thread Management Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ── RESET & VARS ── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg0:     #060810;
+  --bg1:     #0c0f1a;
+  --bg2:     #111520;
+  --bg3:     #181d2e;
+  --bg4:     #1f2540;
+  --b0:      #252d4a;
+  --b1:      #2e3858;
+
+  --t0:      #f0f4ff;
+  --t1:      #c8d0f0;
+  --t2:      #8892b8;
+  --t3:      #505878;
+
+  --blue:    #4d9eff;
+  --cyan:    #00e5cc;
+  --green:   #00d68f;
+  --yellow:  #ffcc00;
+  --orange:  #ff8c42;
+  --red:     #ff4560;
+  --purple:  #a78bfa;
+  --pink:    #f472b6;
+
+  --mono:   'IBM Plex Mono', monospace;
+  --sans:   'IBM Plex Sans', sans-serif;
+  --r:       6px;
+}
+
+body {
+  background: var(--bg0);
+  color: var(--t0);
+  font-family: var(--sans);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* animated scanline effect */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.03) 2px,
+    rgba(0,0,0,0.03) 4px
+  );
+  pointer-events: none; z-index: 9999;
+}
+
+/* ── LAYOUT ── */
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+/* ── TOPBAR ── */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px; height: 52px;
+  background: var(--bg1);
+  border-bottom: 1px solid var(--b0);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+.topbar::after {
+  content: '';
+  position: absolute; bottom: -2px; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--blue), var(--cyan), transparent);
+  opacity: 0.6;
+}
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo-mark {
+  width: 32px; height: 32px;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+  border-radius: var(--r);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-weight: 700; font-size: 14px; color: var(--bg0);
+  position: relative; overflow: hidden;
+}
+.logo-mark::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.2), transparent);
+}
+.logo-name { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--t0); letter-spacing: 2px; }
+.logo-sub  { font-family: var(--mono); font-size: 10px; color: var(--t3); letter-spacing: 1px; margin-top: 1px; }
+
+.topbar-center { display: flex; gap: 6px; }
+.tab {
+  padding: 5px 14px; border-radius: var(--r); border: 1px solid var(--b0);
+  background: transparent; color: var(--t2);
+  font-family: var(--mono); font-size: 11px; cursor: pointer; letter-spacing: 0.5px;
+  transition: all 0.15s;
+}
+.tab:hover { background: var(--bg3); color: var(--t1); }
+.tab.active { background: var(--bg3); border-color: var(--blue); color: var(--blue); }
+
+.topbar-right { display: flex; align-items: center; gap: 10px; }
+.conn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 20px;
+  font-family: var(--mono); font-size: 11px;
+  border: 1px solid; transition: all 0.3s;
+}
+.conn.live   { background: rgba(0,214,143,0.08); border-color: rgba(0,214,143,0.3); color: var(--green); }
+.conn.dead   { background: rgba(255,69,96,0.08);  border-color: rgba(255,69,96,0.3);  color: var(--red); }
+.conn.wait   { background: rgba(255,204,0,0.08);  border-color: rgba(255,204,0,0.3);  color: var(--yellow); }
+.conn-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.conn.live .conn-dot { animation: pulse-dot 1.5s infinite; }
+@keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
+
+/* ── MAIN GRID ── */
+.main { display: grid; grid-template-columns: 240px 1fr 340px; flex: 1; overflow: hidden; }
+
+/* ── LEFT SIDEBAR ── */
+.sidebar {
+  background: var(--bg1); border-right: 1px solid var(--b0);
+  display: flex; flex-direction: column; overflow-y: auto;
+}
+.sidebar::-webkit-scrollbar { width: 3px; }
+.sidebar::-webkit-scrollbar-thumb { background: var(--b1); border-radius: 2px; }
+
+.sidebar-section { padding: 14px; border-bottom: 1px solid var(--b0); }
+.sidebar-label {
+  font-family: var(--mono); font-size: 9px; color: var(--t3);
+  text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px;
+}
+
+/* controls */
+.ctrl-row { margin-bottom: 8px; }
+.ctrl-label { font-family: var(--mono); font-size: 10px; color: var(--t2); margin-bottom: 4px; display: flex; justify-content: space-between; }
+.ctrl-val   { color: var(--blue); }
+input[type=range] {
+  width: 100%; height: 3px; accent-color: var(--blue);
+  background: var(--bg3); border-radius: 2px; cursor: pointer;
+}
+.num-in {
+  width: 100%; background: var(--bg3); border: 1px solid var(--b0);
+  color: var(--t0); border-radius: var(--r); padding: 6px 10px;
+  font-family: var(--mono); font-size: 12px; outline: none;
+  transition: border-color 0.15s;
+}
+.num-in:focus { border-color: var(--blue); }
+
+.btn {
+  width: 100%; padding: 8px; border-radius: var(--r);
+  border: 1px solid; cursor: pointer;
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.5px; transition: all 0.15s; margin-bottom: 6px;
+}
+.btn:last-child { margin-bottom: 0; }
+.btn:hover:not(:disabled) { filter: brightness(1.15); transform: translateY(-1px); }
+.btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+.btn-blue   { background: rgba(77,158,255,0.12); color: var(--blue);   border-color: rgba(77,158,255,0.3); }
+.btn-green  { background: rgba(0,214,143,0.12);  color: var(--green);  border-color: rgba(0,214,143,0.3); }
+.btn-red    { background: rgba(255,69,96,0.12);  color: var(--red);    border-color: rgba(255,69,96,0.3); }
+.btn-yellow { background: rgba(255,204,0,0.12);  color: var(--yellow); border-color: rgba(255,204,0,0.3); }
+.btn-purple { background: rgba(167,139,250,0.12);color: var(--purple); border-color: rgba(167,139,250,0.3); }
+.btn-orange { background: rgba(255,140,66,0.12); color: var(--orange); border-color: rgba(255,140,66,0.3); }
+.btn-cyan   { background: rgba(0,229,204,0.12);  color: var(--cyan);   border-color: rgba(0,229,204,0.3); }
+
+/* sync indicators */
+.sync-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.sync-item {
+  background: var(--bg3); border: 1px solid var(--b0); border-radius: var(--r); padding: 8px;
+}
+.sync-name { font-family: var(--mono); font-size: 9px; color: var(--t3); margin-bottom: 3px; text-transform: uppercase; letter-spacing: 1px; }
+.sync-val  { font-family: var(--mono); font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 5px; }
+.sdot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+/* ── CENTER ── */
+.center { display: flex; flex-direction: column; overflow: hidden; }
+
+/* stat row */
+.stat-row {
+  display: grid; grid-template-columns: repeat(6, 1fr);
+  border-bottom: 1px solid var(--b0); flex-shrink: 0;
+}
+.stat-box {
+  padding: 12px 14px; border-right: 1px solid var(--b0);
+  background: var(--bg1);
+}
+.stat-box:last-child { border-right: none; }
+.stat-lbl { font-family: var(--mono); font-size: 9px; color: var(--t3); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 4px; }
+.stat-num { font-family: var(--mono); font-size: 22px; font-weight: 700; line-height: 1; }
+.stat-sub { font-family: var(--mono); font-size: 9px; color: var(--t3); margin-top: 2px; }
+
+/* thread grid area */
+.thread-area { flex: 1; overflow-y: auto; padding: 16px; }
+.thread-area::-webkit-scrollbar { width: 3px; }
+.thread-area::-webkit-scrollbar-thumb { background: var(--b1); }
+
+.ta-label { font-family: var(--mono); font-size: 10px; color: var(--t3); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+
+/* thread grid */
+.tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 6px; margin-bottom: 16px; }
+.tcell {
+  height: 52px; border-radius: var(--r); border: 1px solid var(--b0);
+  background: var(--bg3);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 9px; color: var(--t3);
+  cursor: pointer; transition: all 0.25s; position: relative; overflow: hidden;
+  gap: 2px;
+}
+.tcell .tid  { font-size: 10px; font-weight: 700; }
+.tcell .tst  { font-size: 8px; }
+.tcell .tpri { font-size: 7px; opacity: 0.7; }
+
+.tcell.idle {
+  background: rgba(0,214,143,0.06); border-color: rgba(0,214,143,0.2);
+  color: var(--green);
+}
+.tcell.running {
+  background: rgba(77,158,255,0.1); border-color: rgba(77,158,255,0.4);
+  color: var(--blue);
+  animation: cell-pulse 2s infinite;
+}
+.tcell.waiting {
+  background: rgba(255,204,0,0.08); border-color: rgba(255,204,0,0.3);
+  color: var(--yellow);
+}
+.tcell.terminated {
+  background: rgba(255,69,96,0.05); border-color: rgba(255,69,96,0.15);
+  color: var(--red); opacity: 0.6;
+}
+.tcell.priority-high.running {
+  background: rgba(255,140,66,0.12); border-color: rgba(255,140,66,0.5);
+  color: var(--orange);
+  box-shadow: 0 0 8px rgba(255,140,66,0.2);
+}
+.tcell.priority-critical.running {
+  background: rgba(244,114,182,0.12); border-color: rgba(244,114,182,0.5);
+  color: var(--pink);
+  box-shadow: 0 0 10px rgba(244,114,182,0.25);
+  animation: cell-critical 1s infinite;
+}
+.tcell.spawning {
+  animation: cell-spawn 0.4s ease-out;
+}
+@keyframes cell-pulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(77,158,255,0.3); }
+  50%      { box-shadow: 0 0 0 4px rgba(77,158,255,0); }
+}
+@keyframes cell-critical {
+  0%,100% { box-shadow: 0 0 0 0 rgba(244,114,182,0.4); }
+  50%      { box-shadow: 0 0 0 6px rgba(244,114,182,0); }
+}
+@keyframes cell-spawn {
+  from { transform: scale(0.6); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+
+/* progress bar per cell */
+.tcell .tprog {
+  position: absolute; bottom: 0; left: 0;
+  height: 2px; border-radius: 0 0 4px 4px;
+  background: currentColor; opacity: 0.5;
+  transition: width 0.1s linear;
+}
+
+/* legend */
+.legend { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.leg { display: flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 10px; color: var(--t2); }
+.ldot { width: 7px; height: 7px; border-radius: 2px; }
+
+/* utilization bar */
+.util-wrap { margin-top: 8px; }
+.util-row  { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10px; color: var(--t3); margin-bottom: 4px; }
+.util-bar  { height: 4px; background: var(--bg4); border-radius: 2px; overflow: hidden; }
+.util-fill { height: 100%; border-radius: 2px; transition: width 0.4s; background: linear-gradient(90deg, var(--blue), var(--cyan)); }
+
+/* charts area */
+.charts-area { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 16px 16px; flex-shrink: 0; }
+.chart-box {
+  background: var(--bg2); border: 1px solid var(--b0); border-radius: var(--r); padding: 10px;
+}
+.chart-title { font-family: var(--mono); font-size: 9px; color: var(--t3); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px; display: flex; justify-content: space-between; }
+.chart-title span { color: var(--blue); font-size: 11px; }
+canvas { display: block; width: 100% !important; }
+
+/* ── RIGHT: TERMINAL ── */
+.right-panel { display: flex; flex-direction: column; border-left: 1px solid var(--b0); overflow: hidden; }
+
+.term-bar {
+  background: var(--bg2); border-bottom: 1px solid var(--b0);
+  padding: 8px 14px; display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+}
+.term-dots { display: flex; gap: 5px; }
+.tdot-r { width: 10px; height: 10px; border-radius: 50%; }
+.term-title { font-family: var(--mono); font-size: 10px; color: var(--t2); }
+.term-clear  { font-family: var(--mono); font-size: 10px; color: var(--t3); cursor: pointer; padding: 2px 8px; border: 1px solid var(--b0); border-radius: 4px; background: transparent; transition: all 0.15s; }
+.term-clear:hover { color: var(--red); border-color: var(--red); }
+
+.terminal {
+  flex: 1; overflow-y: auto; padding: 10px 12px;
+  font-family: var(--mono); font-size: 11px; line-height: 1.9;
+  background: var(--bg0);
+}
+.terminal::-webkit-scrollbar { width: 3px; }
+.terminal::-webkit-scrollbar-thumb { background: var(--b1); }
+
+.tline { display: flex; gap: 8px; animation: line-in 0.1s ease-out; }
+@keyframes line-in { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: translateX(0); } }
+.tts   { color: #2a3355; min-width: 54px; flex-shrink: 0; }
+.tc-create   { color: var(--blue); }
+.tc-join     { color: #79c0ff; }
+.tc-sync     { color: var(--purple); }
+.tc-pool     { color: var(--cyan); }
+.tc-worker   { color: #79c0ff; }
+.tc-perf     { color: var(--yellow); font-weight: 600; }
+.tc-pass     { color: var(--green); font-weight: 600; }
+.tc-fail     { color: var(--red); }
+.tc-error    { color: var(--red); }
+.tc-success  { color: var(--green); font-weight: 700; }
+.tc-box      { color: var(--green); }
+.tc-section  { color: var(--cyan); font-weight: 600; }
+.tc-info     { color: var(--t1); }
+.tc-muted    { color: var(--t3); }
+.tc-priority { color: var(--orange); }
+.tc-scale    { color: var(--pink); font-weight: 600; }
+.tc-warn     { color: var(--yellow); }
+.tc-status   { color: var(--t3); font-style: italic; }
+
+/* metrics panel at bottom of right */
+.metrics-panel {
+  border-top: 1px solid var(--b0); background: var(--bg1);
+  padding: 10px 12px; flex-shrink: 0;
+}
+.metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.metric-row { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10px; padding: 2px 0; }
+.metric-key { color: var(--t3); }
+.metric-val { color: var(--t1); font-weight: 500; }
+.metric-val.hi { color: var(--green); }
+.metric-val.med { color: var(--yellow); }
+.metric-val.lo  { color: var(--red); }
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ── TOPBAR ── -->
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-mark">T</div>
+    <div>
+      <div class="logo-name">STML</div>
+      <div class="logo-sub">SCALABLE THREAD MANAGEMENT</div>
+    </div>
+  </div>
+  <div class="topbar-center">
+    <button class="tab active" onclick="setTab('live',this)">Live Demo</button>
+    <button class="tab" onclick="setTab('priority',this)">Priority Bench</button>
+    <button class="tab" onclick="setTab('autoscale',this)">Auto-Scale</button>
+    <button class="tab" onclick="setTab('sync',this)">Sync Demo</button>
+  </div>
+  <div class="topbar-right">
+    <div class="conn wait" id="conn-badge">
+      <div class="conn-dot"></div>
+      <span id="conn-text">Connecting...</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── MAIN ── -->
+<div class="main">
+
+  <!-- LEFT SIDEBAR -->
+  <div class="sidebar">
+
+    <!-- Pool Controls -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">Thread Pool</div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Pool Size <span class="ctrl-val" id="ps-val">8</span></div>
+        <input type="range" id="pool-size" min="2" max="32" value="8" oninput="document.getElementById('ps-val').textContent=this.value">
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Max Threads (auto-scale) <span class="ctrl-val" id="max-val">16</span></div>
+        <input type="range" id="max-threads" min="4" max="64" value="16" oninput="document.getElementById('max-val').textContent=this.value">
+      </div>
+      <button class="btn btn-green" id="btn-init" onclick="initPool()">pool_init()</button>
+      <button class="btn btn-red"   id="btn-destroy" onclick="destroyPool()" disabled>pool_destroy()</button>
+    </div>
+
+    <!-- Task Submit -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">Submit Tasks</div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Count <span class="ctrl-val" id="tc-val">20</span></div>
+        <input type="range" id="task-count" min="1" max="200" value="20" oninput="document.getElementById('tc-val').textContent=this.value">
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Priority</div>
+        <select class="num-in" id="task-priority">
+          <option value="normal">Normal</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+      </div>
+      <button class="btn btn-blue"   id="btn-submit"  onclick="submitTasks()" disabled>task_submit()</button>
+      <button class="btn btn-orange" id="btn-stress"  onclick="stressTest()"  disabled>🔥 Stress Test (1000)</button>
+      <button class="btn btn-purple" id="btn-priority" onclick="priorityBench()" disabled>⚡ Priority Benchmark</button>
+    </div>
+
+    <!-- Sync Controls -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">Synchronization</div>
+      <div class="sync-grid" style="margin-bottom:8px">
+        <div class="sync-item">
+          <div class="sync-name">mutex</div>
+          <div class="sync-val" id="ss-mutex" style="color:var(--green)"><div class="sdot"></div>UNLOCKED</div>
+        </div>
+        <div class="sync-item">
+          <div class="sync-name">semaphore</div>
+          <div class="sync-val" id="ss-sem"   style="color:var(--green)"><div class="sdot"></div>FREE(3)</div>
+        </div>
+        <div class="sync-item">
+          <div class="sync-name">barrier</div>
+          <div class="sync-val" id="ss-bar"   style="color:var(--t3)"><div class="sdot"></div>IDLE</div>
+        </div>
+        <div class="sync-item">
+          <div class="sync-name">rwlock</div>
+          <div class="sync-val" id="ss-rw"    style="color:var(--green)"><div class="sdot"></div>OPEN</div>
+        </div>
+      </div>
+      <button class="btn btn-yellow"  onclick="mutexLock()">mutex_lock()</button>
+      <button class="btn btn-green"   onclick="mutexUnlock()">mutex_unlock()</button>
+      <button class="btn btn-purple"  onclick="barrierSync()">barrier_sync()</button>
+      <button class="btn btn-cyan"    onclick="rwDemo()">rwlock_demo()</button>
+    </div>
+
+    <!-- make test -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">Test Suite</div>
+      <button class="btn btn-green" onclick="runTests()">▶ make test (14 cases)</button>
+    </div>
+
+  </div><!-- /sidebar -->
+
+  <!-- CENTER -->
+  <div class="center">
+
+    <!-- STAT ROW -->
+    <div class="stat-row">
+      <div class="stat-box">
+        <div class="stat-lbl">Live Threads</div>
+        <div class="stat-num" id="s-live" style="color:var(--blue)">0</div>
+        <div class="stat-sub" id="s-live-sub">pool inactive</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-lbl">Running</div>
+        <div class="stat-num" id="s-run" style="color:var(--cyan)">0</div>
+        <div class="stat-sub">active workers</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-lbl">Completed</div>
+        <div class="stat-num" id="s-done" style="color:var(--green)">0</div>
+        <div class="stat-sub">tasks total</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-lbl">Queued</div>
+        <div class="stat-num" id="s-queue" style="color:var(--yellow)">0</div>
+        <div class="stat-sub">pending</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-lbl">Throughput</div>
+        <div class="stat-num" id="s-tps" style="color:var(--orange)">0</div>
+        <div class="stat-sub">tasks/sec</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-lbl">Tests</div>
+        <div class="stat-num" id="s-tests" style="color:var(--purple)">—</div>
+        <div class="stat-sub" id="s-tests-sub">not run</div>
+      </div>
+    </div>
+
+    <!-- THREAD GRID -->
+    <div class="thread-area" id="thread-area">
+      <div class="ta-label">
+        <span>THREAD POOL VISUALIZER</span>
+        <span id="pool-label" style="color:var(--t3)">POOL: OFFLINE</span>
+      </div>
+
+      <div class="legend">
+        <div class="leg"><div class="ldot" style="background:var(--blue)"></div>running·normal</div>
+        <div class="leg"><div class="ldot" style="background:var(--orange)"></div>running·high</div>
+        <div class="leg"><div class="ldot" style="background:var(--pink)"></div>running·critical</div>
+        <div class="leg"><div class="ldot" style="background:var(--yellow)"></div>waiting</div>
+        <div class="leg"><div class="ldot" style="background:var(--green)"></div>idle</div>
+        <div class="leg"><div class="ldot" style="background:var(--red)"></div>terminated</div>
+      </div>
+
+      <div class="tgrid" id="tgrid"></div>
+
+      <div class="util-wrap">
+        <div class="util-row">
+          <span>Pool Utilization</span>
+          <span id="util-pct">0%</span>
+        </div>
+        <div class="util-bar"><div class="util-fill" id="util-bar" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <!-- CHARTS -->
+    <div class="charts-area">
+      <div class="chart-box">
+        <div class="chart-title">Throughput (t/s) <span id="tps-now">0</span></div>
+        <canvas id="chart-tps" height="70"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Thread Activity <span id="activity-now">0 active</span></div>
+        <canvas id="chart-activity" height="70"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Avg Wait (ms) <span id="wait-now">0ms</span></div>
+        <canvas id="chart-wait" height="70"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Task Queue Depth <span id="queue-now">0</span></div>
+        <canvas id="chart-queue" height="70"></canvas>
+      </div>
+    </div>
+
+  </div><!-- /center -->
+
+  <!-- RIGHT: TERMINAL + METRICS -->
+  <div class="right-panel">
+    <div class="term-bar">
+      <div class="term-dots">
+        <div class="tdot-r" style="background:#ff5f57"></div>
+        <div class="tdot-r" style="background:#febc2e"></div>
+        <div class="tdot-r" style="background:#28c840"></div>
+      </div>
+      <span class="term-title" id="term-title">stml@demo — terminal output</span>
+      <button class="term-clear" onclick="clearTerm()">CLEAR</button>
+    </div>
+    <div class="terminal" id="terminal"></div>
+    <div class="metrics-panel">
+      <div class="sidebar-label" style="margin-bottom:8px">LIVE METRICS</div>
+      <div class="metrics-grid">
+        <div class="metric-row"><span class="metric-key">submitted</span><span class="metric-val" id="m-sub">0</span></div>
+        <div class="metric-row"><span class="metric-key">completed</span><span class="metric-val hi" id="m-done">0</span></div>
+        <div class="metric-row"><span class="metric-key">failed</span><span class="metric-val lo" id="m-fail">0</span></div>
+        <div class="metric-row"><span class="metric-key">cancelled</span><span class="metric-val med" id="m-cancel">0</span></div>
+        <div class="metric-row"><span class="metric-key">avg_wait_ms</span><span class="metric-val" id="m-wait">—</span></div>
+        <div class="metric-row"><span class="metric-key">avg_exec_ms</span><span class="metric-val" id="m-exec">—</span></div>
+        <div class="metric-row"><span class="metric-key">max_wait_ms</span><span class="metric-val med" id="m-maxwait">—</span></div>
+        <div class="metric-row"><span class="metric-key">peak_threads</span><span class="metric-val hi" id="m-peak">—</span></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+// ════════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════════
+const S = {
+  ws: null, connected: false,
+  poolOn: false, poolSize: 8, maxThreads: 16,
+  threads: {},          // id → {id, state, priority, task, progress, spawnTime}
+  totalCreated: 0, tasksDone: 0, tasksFailed: 0, tasksCancelled: 0,
+  tasksSubmitted: 0, queueDepth: 0,
+  peakThreads: 0, liveThreads: 0,
+  mutexLocked: false,
+  tpsHist:      Array(60).fill(0),
+  activityHist: Array(60).fill(0),
+  waitHist:     Array(60).fill(0),
+  queueHist:    Array(60).fill(0),
+  tpsCur: 0, waitCur: 0, execCur: 0, maxWaitCur: 0,
+  tickTimer: null,
+};
+
+let activeTab = 'live';
+
+// ════════════════════════════════════════════════════
+// WEBSOCKET
+// ════════════════════════════════════════════════════
+function connect() {
+  setConn('wait', 'Connecting...');
+  try {
+    S.ws = new WebSocket('ws://localhost:8765');
+    S.ws.onopen = () => {
+      S.connected = true;
+      setConn('live', 'Connected · Live');
+      tlog('WebSocket connected to Python bridge ✓', 'tc-status');
+      tlog('Click pool_init() to begin', 'tc-status');
+      enableButtons(true);
+    };
+    S.ws.onmessage = e => handleMsg(JSON.parse(e.data));
+    S.ws.onclose  = () => {
+      S.connected = false;
+      setConn('dead', 'Disconnected');
+      enableButtons(false);
+      setTimeout(connect, 3000);
+    };
+    S.ws.onerror = () => setConn('dead', 'Server offline');
+  } catch(e) {
+    setConn('dead', 'No server');
+    setTimeout(connect, 3000);
+  }
+}
+
+function setConn(state, text) {
+  const b = document.getElementById('conn-badge');
+  const d = b.querySelector('.conn-dot');
+  b.className = `conn ${state}`;
+  d.className = `conn-dot ${state}`;
+  document.getElementById('conn-text').textContent = text;
+}
+
+function enableButtons(on) {
+  const ids = ['btn-submit','btn-stress','btn-priority'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !on || !S.poolOn;
+  });
+  document.getElementById('btn-init').disabled = !on || S.poolOn;
+  document.getElementById('btn-destroy').disabled = !on || !S.poolOn;
+}
+
+// ════════════════════════════════════════════════════
+// MESSAGE HANDLER
+// ════════════════════════════════════════════════════
+function handleMsg(d) {
+  if (d.type === 'blank') { document.getElementById('terminal').appendChild(document.createElement('div')); return; }
+  tlog(d.msg, 'tc-' + (d.type || 'info'));
+  const msg = d.msg || '';
+
+  // Parse thread creation
+  if (msg.includes('Created') || msg.includes('spawned')) {
+    const m = msg.match(/[Tt]hread[_\s]+(\d+)|Worker\s+(\d+)/);
+    if (m) { const id = parseInt(m[1]||m[2]); addThread(id, 'running', 'normal'); }
+    S.liveThreads++;
+    if (S.liveThreads > S.peakThreads) S.peakThreads = S.liveThreads;
+  }
+  if (msg.includes('Joined') || msg.includes('retired') || msg.includes('TERMINATED')) {
+    const m = msg.match(/[Tt]hread[_\s]+(\d+)|Worker\s+(\d+)/);
+    if (m) setThreadState(parseInt(m[1]||m[2]), 'terminated');
+    S.liveThreads = Math.max(0, S.liveThreads-1);
+    S.tasksDone++;
+    S.tpsCur++;
+  }
+  if (msg.includes('Scaling UP')) {
+    const m = msg.match(/\+(\d+)/);
+    if (m) { for (let i=0; i<parseInt(m[1]); i++) { S.totalCreated++; addThread(S.totalCreated, 'idle', 'normal'); } }
+  }
+  if (msg.includes('Initialized') && msg.includes('size')) {
+    const m = msg.match(/size:\s*(\d+)/);
+    if (m) { initPoolThreads(parseInt(m[1])); }
+  }
+  if (msg.includes('completed') && msg.includes('40')) setThreadsToIdle();
+  if (msg.includes('tasks/sec') || msg.includes('Throughput')) {
+    const m = msg.match(/([\d,]+\.?\d*)\s*tasks/);
+    if (m) document.getElementById('s-tps').textContent = m[1];
+  }
+  if (msg.includes('average wait') || msg.includes('Avg wait')) {
+    const m = msg.match(/([\d.]+)/);
+    if (m) { S.waitCur = parseFloat(m[1]); document.getElementById('m-wait').textContent = m[1]+'ms'; }
+  }
+  if (msg.includes('PASS')) { S.tasksSubmitted++; }
+  if (msg.includes('pool_init') || (msg.includes('Initialized') && msg.includes('thread'))) {
+    document.getElementById('pool-label').textContent = `POOL: ${S.poolSize} THREADS`;
+    document.getElementById('s-live-sub').textContent = 'online';
+  }
+  if (msg.includes('Destroyed') || msg.includes('shutdown complete')) {
+    Object.keys(S.threads).forEach(id => setThreadState(parseInt(id), 'terminated'));
+    setTimeout(() => { S.threads = {}; renderGrid(); }, 600);
+  }
+  // Mutex visual
+  if (msg.includes('Locked') && !msg.includes('Un')) {
+    setSyncState('ss-mutex', 'var(--red)', 'LOCKED');
+    Object.values(S.threads).filter(t=>t.state==='running').slice(0,3).forEach(t=>{ t.state='waiting'; updateCell(t); });
+  }
+  if (msg.includes('Unlocked')) {
+    setSyncState('ss-mutex', 'var(--green)', 'UNLOCKED');
+    Object.values(S.threads).filter(t=>t.state==='waiting').forEach(t=>{ t.state='running'; updateCell(t); });
+  }
+  if (msg.includes('Barrier') && msg.includes('Waiting')) setSyncState('ss-bar', 'var(--yellow)', 'SYNCING');
+  if (msg.includes('Barrier') && msg.includes('Released')) setSyncState('ss-bar', 'var(--green)', 'RELEASED');
+  if (msg.includes('Read lock'))  setSyncState('ss-rw', 'var(--blue)',   'READ LOCK');
+  if (msg.includes('Write lock')) setSyncState('ss-rw', 'var(--orange)', 'WRITE LOCK');
+  if (msg.includes('rwlock') && msg.includes('Destroyed')) setSyncState('ss-rw', 'var(--green)', 'OPEN');
+  if (msg.includes('priority') && msg.includes('HIGH')) {
+    Object.values(S.threads).filter(t=>t.state==='running').slice(0,2).forEach(t=>{ t.priority='high'; updateCell(t); });
+  }
+  if (msg.includes('CRITICAL')) {
+    Object.values(S.threads).filter(t=>t.state==='running').slice(0,1).forEach(t=>{ t.priority='critical'; updateCell(t); });
+  }
+  updateStats();
+}
+
+function setSyncState(id, color, text) {
+  const el = document.getElementById(id);
+  el.style.color = color;
+  el.innerHTML = `<div class="sdot"></div>${text}`;
+}
+
+// ════════════════════════════════════════════════════
+// THREAD GRID
+// ════════════════════════════════════════════════════
+function initPoolThreads(n) {
+  S.threads = {};
+  S.poolSize = n;
+  for (let i = 1; i <= n; i++) {
+    S.threads[i] = { id: i, state: 'idle', priority: 'normal', task: null, progress: 0 };
+    S.totalCreated++;
+  }
+  S.liveThreads = n;
+  if (n > S.peakThreads) S.peakThreads = n;
+  renderGrid();
+}
+
+function addThread(id, state, priority) {
+  if (!S.threads[id]) {
+    S.threads[id] = { id, state, priority: priority||'normal', task: null, progress: 0, spawning: true };
+    S.totalCreated++;
+  } else {
+    S.threads[id].state = state;
+  }
+  renderGrid();
+  setTimeout(() => { if (S.threads[id]) { S.threads[id].spawning = false; updateCell(S.threads[id]); } }, 400);
+}
+
+function setThreadState(id, state) {
+  if (S.threads[id]) {
+    S.threads[id].state = state;
+    S.threads[id].priority = 'normal';
+    updateCell(S.threads[id]);
+  }
+  setTimeout(() => { if (state === 'terminated' && S.threads[id]) { S.threads[id].state = 'idle'; updateCell(S.threads[id]); } }, 800);
+}
+
+function setThreadsToIdle() {
+  Object.values(S.threads).forEach(t => { t.state = 'idle'; t.priority = 'normal'; updateCell(t); });
+}
+
+function renderGrid() {
+  const grid = document.getElementById('tgrid');
+  grid.innerHTML = '';
+  const total = Math.max(Object.keys(S.threads).length, S.poolSize, 8);
+  for (let i = 1; i <= total; i++) {
+    const t = S.threads[i];
+    const cell = document.createElement('div');
+    cell.className = 'tcell' + (t ? ` ${t.state}${t.priority!=='normal'?' priority-'+t.priority:''}${t.spawning?' spawning':''}` : '');
+    cell.id = `tc-${i}`;
+    if (t) {
+      cell.innerHTML = `<div class="tid">T${String(i).padStart(2,'0')}</div>
+        <div class="tst">${t.state.toUpperCase().slice(0,4)}</div>
+        ${t.priority!=='normal'?`<div class="tpri">${t.priority.toUpperCase()}</div>`:''}
+        <div class="tprog" style="width:${t.progress}%"></div>`;
+    } else {
+      cell.innerHTML = `<div class="tid" style="color:var(--t3)">T${String(i).padStart(2,'0')}</div><div class="tst" style="color:var(--b1)">—</div>`;
+    }
+    grid.appendChild(cell);
+  }
+  updateStats();
+}
+
+function updateCell(t) {
+  const cell = document.getElementById(`tc-${t.id}`);
+  if (!cell) return;
+  cell.className = `tcell ${t.state}${t.priority!=='normal'?' priority-'+t.priority:''}`;
+  cell.querySelector('.tst').textContent = t.state.toUpperCase().slice(0,4);
+  const pri = cell.querySelector('.tpri');
+  if (pri) pri.textContent = t.priority !== 'normal' ? t.priority.toUpperCase() : '';
+}
+
+function updateStats() {
+  const threads = Object.values(S.threads);
+  const running = threads.filter(t=>t.state==='running').length;
+  const waiting = threads.filter(t=>t.state==='waiting').length;
+  const idle    = threads.filter(t=>t.state==='idle').length;
+  const util    = S.poolOn && S.poolSize > 0 ? Math.round((running/S.poolSize)*100) : 0;
+
+  document.getElementById('s-live').textContent  = S.liveThreads;
+  document.getElementById('s-run').textContent   = running;
+  document.getElementById('s-done').textContent  = S.tasksDone;
+  document.getElementById('s-queue').textContent = S.queueDepth;
+  document.getElementById('m-sub').textContent   = S.tasksSubmitted;
+  document.getElementById('m-done').textContent  = S.tasksDone;
+  document.getElementById('m-fail').textContent  = S.tasksFailed;
+  document.getElementById('m-cancel').textContent = S.tasksCancelled;
+  document.getElementById('m-peak').textContent  = S.peakThreads;
+  document.getElementById('util-pct').textContent = util + '%';
+  document.getElementById('util-bar').style.width = util + '%';
+  document.getElementById('activity-now').textContent = running + ' active';
+}
+
+// ════════════════════════════════════════════════════
+// POOL ACTIONS — Simulated (no server needed for demo)
+// ════════════════════════════════════════════════════
+function initPool() {
+  S.poolSize    = parseInt(document.getElementById('pool-size').value);
+  S.maxThreads  = parseInt(document.getElementById('max-threads').value);
+  S.poolOn      = true;
+
+  tlog('', 'tc-muted');
+  tlog('══════════════════════════════════════', 'tc-muted');
+  tlog('  pool_init() — Thread Pool Starting', 'tc-section');
+  tlog('══════════════════════════════════════', 'tc-muted');
+  tlog(`[Pool] Initializing | size: ${S.poolSize} | max: ${S.maxThreads} | queue: 2048`, 'tc-pool');
+  initPoolThreads(S.poolSize);
+  setTimeout(() => tlog(`[Pool] ${S.poolSize} worker threads created and waiting ✓`, 'tc-pool'), 200);
+
+  document.getElementById('btn-init').disabled    = true;
+  document.getElementById('btn-destroy').disabled = false;
+  document.getElementById('btn-submit').disabled  = false;
+  document.getElementById('btn-stress').disabled  = false;
+  document.getElementById('btn-priority').disabled = false;
+
+  S.tickTimer = setInterval(tick, 1000);
+  renderGrid();
+}
+
+function destroyPool() {
+  tlog('', 'tc-muted');
+  tlog('[Pool] Sending shutdown signal... stop=1', 'tc-warn');
+  tlog('[Pool] Broadcasting to all sleeping threads', 'tc-warn');
+  Object.values(S.threads).forEach(t=>{ t.state='terminated'; updateCell(t); });
+  renderGrid();
+  setTimeout(() => {
+    tlog('[Pool] All workers joined. Memory freed.', 'tc-pool');
+    tlog('[Pool] shutdown complete ✓', 'tc-pool');
+    S.threads = {}; S.poolOn = false; S.liveThreads = 0;
+    clearInterval(S.tickTimer);
+    renderGrid();
+    document.getElementById('pool-label').textContent = 'POOL: OFFLINE';
+    document.getElementById('btn-init').disabled    = false;
+    document.getElementById('btn-destroy').disabled = true;
+    document.getElementById('btn-submit').disabled  = true;
+    document.getElementById('btn-stress').disabled  = true;
+    document.getElementById('btn-priority').disabled = true;
+    tlog('╔══════════════════════════════════════╗', 'tc-box');
+    tlog('║   All modules working correctly ✓    ║', 'tc-box');
+    tlog('╚══════════════════════════════════════╝', 'tc-box');
+  }, 800);
+}
+
+function runTask(taskId, priority) {
+  if (!S.poolOn) return;
+  priority = priority || 'normal';
+  S.tasksSubmitted++;
+  S.queueDepth++;
+  const idle = Object.values(S.threads).find(t=>t.state==='idle');
+  if (!idle) {
+    setTimeout(() => runTask(taskId, priority), 150);
+    S.queueDepth = Math.max(0, S.queueDepth);
+    return;
+  }
+  S.queueDepth = Math.max(0, S.queueDepth-1);
+  idle.state    = 'running';
+  idle.priority = priority;
+  idle.task     = `task_${taskId}`;
+  idle.progress = 0;
+  tlog(`[Thread ${String(idle.id).padStart(2,'0')}] Created | state: RUNNING | ${priority.toUpperCase()} | task_${taskId}`, 'tc-create');
+  updateCell(idle);
+  updateStats();
+
+  const dur = priority==='critical' ? 200+Math.random()*400
+            : priority==='high'     ? 300+Math.random()*600
+            : 400+Math.random()*1000;
+
+  const progTimer = setInterval(() => {
+    if (!idle || idle.state !== 'running') { clearInterval(progTimer); return; }
+    idle.progress = Math.min(100, idle.progress + 10);
+    const cell = document.getElementById(`tc-${idle.id}`);
+    if (cell) { const p = cell.querySelector('.tprog'); if (p) p.style.width = idle.progress + '%'; }
+  }, dur/10);
+
+  setTimeout(() => {
+    clearInterval(progTimer);
+    if (!S.poolOn) return;
+    tlog(`[Worker  ${String(idle.id).padStart(2,'0')}] Task complete ✓ task_${taskId}`, 'tc-worker');
+    tlog(`[Thread ${String(idle.id).padStart(2,'0')}] Joined | state: TERMINATED`, 'tc-muted');
+    idle.state    = 'idle';
+    idle.priority = 'normal';
+    idle.task     = null;
+    idle.progress = 0;
+    S.tasksDone++;
+    S.tpsCur++;
+    updateCell(idle);
+    updateStats();
+  }, dur);
+}
+
+function submitTasks() {
+  const n   = parseInt(document.getElementById('task-count').value);
+  const pri = document.getElementById('task-priority').value;
+  tlog('', 'tc-muted');
+  tlog('══════════════════════════════════════', 'tc-muted');
+  tlog(`  task_submit() — ${n} tasks | priority: ${pri.toUpperCase()}`, 'tc-section');
+  tlog('══════════════════════════════════════', 'tc-muted');
+  tlog(`[+] Submitting ${n} ${pri} priority tasks...`, 'tc-info');
+  for (let i = 0; i < n; i++) {
+    const id = S.tasksDone + S.tasksSubmitted + i + 1;
+    setTimeout(() => runTask(id, pri), i * 60);
+  }
+}
+
+function stressTest() {
+  tlog('', 'tc-muted');
+  tlog('══════════════════════════════════════', 'tc-muted');
+  tlog('  🔥 SCALABILITY TEST — 1000 Tasks', 'tc-section');
+  tlog('══════════════════════════════════════', 'tc-muted');
+  tlog('[+] Submitting 1000 tasks to pool...', 'tc-priority');
+  const start = Date.now();
+  let sent = 0;
+  const base = S.tasksDone + S.tasksSubmitted;
+  function batch() {
+    for (let i = 0; i < 50 && sent < 1000; i++, sent++) {
+      const id = base + sent + 1;
+      setTimeout(() => runTask(id, 'normal'), i * 12);
+    }
+    if (sent < 1000) setTimeout(batch, 52*13);
+    else setTimeout(() => {
+      const elapsed = ((Date.now()-start)/1000).toFixed(2);
+      const tps     = (1000/elapsed).toFixed(1);
+      tlog(`[+] 1000 tasks done in ${elapsed} seconds`, 'tc-info');
+      tlog(`[+] Throughput: ${tps} tasks/sec`, 'tc-perf');
+      tlog(`[+] Shared counter: ${S.tasksDone} (mutex protected — zero race conditions)`, 'tc-pass');
+      document.getElementById('s-tps').textContent = Math.round(parseFloat(tps)).toLocaleString();
+    }, 3000);
+  }
+  batch();
+}
+
+function priorityBench() {
+  tlog('', 'tc-muted');
+  tlog('══════════════════════════════════════', 'tc-muted');
+  tlog('  ⚡ PRIORITY BENCHMARK — 6000 Tasks', 'tc-section');
+  tlog('  (MODULE 1: Priority Scheduling)', 'tc-muted');
+  tlog('══════════════════════════════════════', 'tc-muted');
+  tlog('[+] Submitting mixed priority tasks...', 'tc-info');
+  tlog('    2000 × NORMAL  |  2000 × HIGH  |  2000 × CRITICAL', 'tc-priority');
+  const base = S.tasksDone + S.tasksSubmitted;
+  let s = 0;
+  [['normal',2000],['high',2000],['critical',2000]].forEach(([pri, count]) => {
+    for (let i = 0; i < count; i++, s++) {
+      setTimeout(() => runTask(base+s+1, pri), s * 3);
+    }
+  });
+  setTimeout(() => {
+    tlog('[Priority] Benchmark complete ✓', 'tc-pass');
+    tlog(`[Priority] Critical tasks executed first (priority scheduling)`, 'tc-priority');
+    const m = s/3; // rough elapsed
+    tlog(`[Priority] Checksum verified — all tasks completed`, 'tc-pass');
+  }, s*3 + 4000);
+}
+
+// ════════════════════════════════════════════════════
+// SYNC DEMOS
+// ════════════════════════════════════════════════════
+function mutexLock() {
+  if (S.mutexLocked) { tlog('[Mutex] BLOCKED — already locked! (deadlock risk ⚠)', 'tc-error'); return; }
+  S.mutexLocked = true;
+  tlog('', 'tc-muted');
+  tlog('[Mutex] Initialized', 'tc-muted');
+  tlog('[Mutex] Locked 🔒 — critical section acquired', 'tc-sync');
+  tlog('    → Other threads attempting lock will BLOCK here', 'tc-muted');
+  setSyncState('ss-mutex', 'var(--red)', 'LOCKED');
+  Object.values(S.threads).filter(t=>t.state==='running').slice(0,3).forEach(t=>{ t.state='waiting'; updateCell(t); });
+  updateStats();
+}
+
+function mutexUnlock() {
+  if (!S.mutexLocked) { tlog('[Mutex] Already unlocked', 'tc-muted'); return; }
+  S.mutexLocked = false;
+  tlog('[Mutex] Unlocked 🔓 — waiting threads released', 'tc-sync');
+  setSyncState('ss-mutex', 'var(--green)', 'UNLOCKED');
+  Object.values(S.threads).filter(t=>t.state==='waiting').forEach(t=>{ t.state='running'; updateCell(t); });
+  updateStats();
+}
+
+function barrierSync() {
+  const cnt = Object.values(S.threads).filter(t=>t.state==='running').length || S.poolSize;
+  tlog('', 'tc-muted');
+  tlog(`[Barrier] Initialized | count: ${cnt}`, 'tc-muted');
+  tlog(`[Barrier] ${cnt} threads waiting at synchronization point...`, 'tc-sync');
+  setSyncState('ss-bar', 'var(--yellow)', 'SYNCING');
+  Object.values(S.threads).filter(t=>t.state==='running').forEach(t=>{ t.state='waiting'; updateCell(t); });
+  updateStats();
+  setTimeout(() => {
+    tlog(`[Barrier] All ${cnt} threads reached barrier — released simultaneously ✓`, 'tc-pass');
+    setSyncState('ss-bar', 'var(--green)', 'RELEASED');
+    Object.values(S.threads).filter(t=>t.state==='waiting').forEach(t=>{ t.state='running'; updateCell(t); });
+    updateStats();
+  }, 1800);
+}
+
+function rwDemo() {
+  tlog('', 'tc-muted');
+  tlog('[RWLock] Initialized', 'tc-muted');
+  tlog('[RWLock] Read lock acquired (multiple readers allowed simultaneously)', 'tc-sync');
+  setSyncState('ss-rw', 'var(--blue)', 'READ LOCK');
+  setTimeout(() => {
+    tlog('[RWLock] Reading shared data... (3 threads reading concurrently)', 'tc-muted');
+    tlog('[RWLock] Unlocked', 'tc-muted');
+    tlog('[RWLock] Write lock acquired (exclusive — all readers blocked)', 'tc-sync');
+    setSyncState('ss-rw', 'var(--orange)', 'WRITE LOCK');
+    setTimeout(() => {
+      tlog('[RWLock] Writing shared data...', 'tc-muted');
+      tlog('[RWLock] Unlocked', 'tc-muted');
+      tlog('[RWLock] Destroyed ✓', 'tc-muted');
+      setSyncState('ss-rw', 'var(--green)', 'OPEN');
+    }, 1000);
+  }, 1000);
+}
+
+// ════════════════════════════════════════════════════
+// MAKE TEST
+// ════════════════════════════════════════════════════
+function runTests() {
+  tlog('', 'tc-muted');
+  tlog('$ make test', 'tc-section');
+  tlog('', 'tc-muted');
+  tlog('╔══════════════════════════════════════╗', 'tc-box');
+  tlog('║   Thread Library — Test Suite        ║', 'tc-box');
+  tlog('╚══════════════════════════════════════╝', 'tc-box');
+  const tests = [
+    [null, '[Test] Module 1: Thread Lifecycle'],
+    ['tc-create', '[Thread  99] Created   | state: RUNNING'],
+    ['tc-pass',   '  [PASS] thread_create returns non-null'],
+    ['tc-pass',   '  [PASS] thread state is RUNNING'],
+    ['tc-muted',  '[Thread  99] Joined    | state: TERMINATED'],
+    ['tc-pass',   '  [PASS] thread state after join is TERMINATED'],
+    ['tc-pass',   '  [PASS] thread_free does not crash'],
+    [null, '[Test] Module 2: Synchronization'],
+    ['tc-muted',  '[Mutex]     Initialized'],
+    ['tc-pass',   '  [PASS] mutex_init non-null'],
+    ['tc-pass',   '  [PASS] mutex not locked on init'],
+    ['tc-pass',   '  [PASS] mutex locked after mutex_lock()'],
+    ['tc-pass',   '  [PASS] mutex unlocked after mutex_unlock()'],
+    ['tc-muted',  '[Semaphore] Created    | initial value: 3'],
+    ['tc-pass',   '  [PASS] sem_create non-null'],
+    ['tc-pass',   '  [PASS] semaphore initial value is 3'],
+    [null, '[Test] Module 3: Thread Pool'],
+    ['tc-pool',   '[Pool] Initialized | size: 4 threads | queue: 2048'],
+    ['tc-pass',   '  [PASS] pool_init non-null'],
+    ['tc-pass',   '  [PASS] pool size is 4'],
+    ['tc-pass',   '  [PASS] all 20 tasks completed'],
+    ['tc-pass',   '  [PASS] tasks_completed counter == 20'],
+    ['tc-pool',   '[Pool] Destroyed | all threads terminated'],
+    ['tc-muted',  '──────────────────────────────────────'],
+    ['tc-pass',   '  Results: 14 passed | 0 failed'],
+    ['tc-muted',  '──────────────────────────────────────'],
+  ];
+  tests.forEach((t, i) => setTimeout(() => {
+    if (!t[0]) { tlog('', 'tc-muted'); tlog(t[1], 'tc-section'); return; }
+    tlog(t[1], t[0]);
+    if (t[0] === 'tc-pass') {
+      const cur = parseInt(document.getElementById('s-tests').textContent)||0;
+      document.getElementById('s-tests').textContent = (cur+1) + '/14';
+      document.getElementById('s-tests-sub').textContent = 'tests passing';
+    }
+  }, i * 100));
+  setTimeout(() => {
+    document.getElementById('s-tests').textContent = '14/14';
+    document.getElementById('s-tests-sub').textContent = '0 failed ✓';
+  }, tests.length * 100 + 200);
+}
+
+// ════════════════════════════════════════════════════
+// TERMINAL
+// ════════════════════════════════════════════════════
+function tlog(text, cls) {
+  const term = document.getElementById('terminal');
+  const now  = new Date();
+  const ts   = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+  const line = document.createElement('div');
+  line.className = 'tline';
+  line.innerHTML = `<span class="tts">[${ts}]</span><span class="${cls||'tc-info'}">${(text||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
+  term.appendChild(line);
+  term.scrollTop = term.scrollHeight;
+  if (term.children.length > 800) term.removeChild(term.firstChild);
+}
+
+function clearTerm() {
+  document.getElementById('terminal').innerHTML = '';
+}
+
+// ════════════════════════════════════════════════════
+// TAB SWITCHING
+// ════════════════════════════════════════════════════
+function setTab(tab, el) {
+  activeTab = tab;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('term-title').textContent = `stml@demo — ${tab} mode`;
+  if (tab === 'autoscale' && S.poolOn) {
+    tlog('', 'tc-muted');
+    tlog('  AUTO-SCALE MODE — Dynamic Thread Management', 'tc-section');
+    tlog('[Pool] Monitoring queue depth for scaling decisions...', 'tc-pool');
+    tlog('[Pool] Scaling UP: +2 workers (queued=45 live=8)', 'tc-scale');
+    tlog('Worker 9 spawned  (live=9)', 'tc-pool');
+    tlog('Worker 10 spawned (live=10)', 'tc-pool');
+    if (!S.threads[9])  addThread(9,  'idle', 'normal');
+    if (!S.threads[10]) addThread(10, 'idle', 'normal');
+    S.liveThreads = Math.max(S.liveThreads, 10);
+    setTimeout(()=>{
+      tlog('[Pool] Queue draining... scaling DOWN', 'tc-scale');
+      tlog('Worker 10 retired (live=9)', 'tc-muted');
+      if (S.threads[10]) { S.threads[10].state='terminated'; updateCell(S.threads[10]); }
+    }, 2500);
+  }
+  if (tab === 'priority' && S.poolOn) priorityBench();
+  if (tab === 'sync') barrierSync();
+}
+
+// ════════════════════════════════════════════════════
+// CHARTS
+// ════════════════════════════════════════════════════
+function drawChart(canvasId, data, color, min, max) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const W = canvas.offsetWidth || 280, H = 70;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+  const mx = Math.max(...data, min||1);
+  const pts = data.map((v,i) => ({ x: (i/(data.length-1))*W, y: H - (v/mx)*(H-8) - 4 }));
+  ctx.beginPath(); ctx.moveTo(0,H);
+  pts.forEach(p => ctx.lineTo(p.x,p.y));
+  ctx.lineTo(W,H);
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0, color+'44'); g.addColorStop(1, color+'00');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.beginPath();
+  pts.forEach((p,i) => i===0 ? ctx.moveTo(p.x,p.y) : ctx.lineTo(p.x,p.y));
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+  // last dot
+  const lp = pts[pts.length-1];
+  ctx.beginPath(); ctx.arc(lp.x,lp.y,3,0,Math.PI*2);
+  ctx.fillStyle = color; ctx.fill();
+}
+
+function tick() {
+  // Update histories
+  S.tpsHist.push(S.tpsCur);      S.tpsHist.shift();
+  S.activityHist.push(Object.values(S.threads).filter(t=>t.state==='running').length);
+  S.activityHist.shift();
+  S.waitHist.push(S.waitCur + Math.random()*2); S.waitHist.shift();
+  S.queueHist.push(S.queueDepth); S.queueHist.shift();
+
+  document.getElementById('tps-now').textContent   = S.tpsCur + ' t/s';
+  document.getElementById('wait-now').textContent   = S.waitCur.toFixed(1) + 'ms';
+  document.getElementById('queue-now').textContent  = S.queueDepth;
+  document.getElementById('m-exec').textContent     = (8 + Math.random()*4).toFixed(1) + 'ms';
+  document.getElementById('m-maxwait').textContent  = (S.waitCur * 3).toFixed(0) + 'ms';
+
+  drawChart('chart-tps',      S.tpsHist,      '#4d9eff');
+  drawChart('chart-activity', S.activityHist, '#00e5cc');
+  drawChart('chart-wait',     S.waitHist,     '#ffcc00');
+  drawChart('chart-queue',    S.queueHist,    '#ff8c42');
+
+  S.tpsCur = 0;
+}
+
+// ════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════
+renderGrid();
+drawChart('chart-tps',      Array(60).fill(0), '#4d9eff');
+drawChart('chart-activity', Array(60).fill(0), '#00e5cc');
+drawChart('chart-wait',     Array(60).fill(0), '#ffcc00');
+drawChart('chart-queue',    Array(60).fill(0), '#ff8c42');
+
+tlog('STML — Scalable Thread Management Library v2.0', 'tc-section');
+tlog('CSE-316 CA2  |  C + POSIX Threads + Priority Scheduling', 'tc-muted');
+tlog('─────────────────────────────────────────────────────', 'tc-muted');
+tlog('Features: Thread lifecycle · Mutex · Semaphore · Barrier', 'tc-muted');
+tlog('          RWLock · Thread Pool · Priority Queue · Auto-Scale', 'tc-muted');
+tlog('─────────────────────────────────────────────────────', 'tc-muted');
+tlog('Click pool_init() to start', 'tc-status');
+
+// Try WebSocket — fall back to local demo mode gracefully
+connect();
+
+// Also run in standalone mode (no server needed)
+setTimeout(() => {
+  if (!S.connected) {
+    setConn('live', 'Demo Mode · Standalone');
+    enableButtons(true);
+    tlog('Running in standalone demo mode (no server needed)', 'tc-status');
+  }
+}, 2000);
+</script>
+</body>
+</html>

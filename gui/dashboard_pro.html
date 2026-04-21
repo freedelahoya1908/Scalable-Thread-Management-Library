@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Thread Library — Live Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',system-ui,sans-serif;}
+  body{background:linear-gradient(135deg,#0f172a,#1e293b);color:#e2e8f0;min-height:100vh;padding:24px;}
+  .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;}
+  h1{font-size:28px;background:linear-gradient(90deg,#38bdf8,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+  .sub{color:#94a3b8;font-size:14px;margin-top:4px;}
+  .badge{padding:6px 14px;border-radius:20px;background:#22c55e;color:#fff;font-size:12px;font-weight:600;}
+  .badge.warn{background:#f59e0b;}
+  .badge.err{background:#ef4444;}
+  .btn{padding:10px 18px;border:0;border-radius:8px;background:#3b82f6;color:#fff;cursor:pointer;font-weight:600;transition:.2s;}
+  .btn:hover{background:#2563eb;transform:translateY(-1px);}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;}
+  .card{background:rgba(30,41,59,.8);border:1px solid #334155;border-radius:12px;padding:20px;backdrop-filter:blur(10px);}
+  .card h3{font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;}
+  .card .val{font-size:28px;font-weight:700;color:#38bdf8;}
+  .card .delta{font-size:11px;color:#22c55e;margin-top:4px;}
+  .charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px;margin-bottom:24px;}
+  .chart-box{background:rgba(30,41,59,.8);border:1px solid #334155;border-radius:12px;padding:20px;}
+  .chart-box h3{font-size:14px;color:#cbd5e1;margin-bottom:12px;}
+  .chart-box canvas{max-height:280px;}
+  .meta{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  .meta .card{font-size:13px;line-height:1.8;}
+  .meta strong{color:#38bdf8;}
+  table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px;}
+  th,td{padding:8px;text-align:left;border-bottom:1px solid #334155;}
+  th{color:#94a3b8;font-weight:600;}
+  .footer{text-align:center;color:#64748b;margin-top:30px;font-size:12px;}
+</style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>⚡ Scalable Thread Management Library</h1>
+      <div class="sub">Real-time Performance Dashboard · Auto-refresh every 5s</div>
+    </div>
+    <div>
+      <span class="badge" id="status">● LIVE</span>
+      <button class="btn" onclick="loadAll()">🔄 Refresh</button>
+    </div>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="stats" id="stats"></div>
+
+  <!-- Charts -->
+  <div class="charts">
+    <div class="chart-box"><h3>📈 Queue Size Over Time</h3><canvas id="queueChart"></canvas></div>
+    <div class="chart-box"><h3>👥 Live Threads Over Time</h3><canvas id="threadChart"></canvas></div>
+    <div class="chart-box"><h3>✅ Completed Tasks Timeline</h3><canvas id="completedChart"></canvas></div>
+    <div class="chart-box"><h3>🏁 Sequential vs Thread-Pool Comparison</h3><canvas id="compChart"></canvas></div>
+  </div>
+
+  <!-- Metadata -->
+  <div class="meta">
+    <div class="card">
+      <h3>📊 Latest Run Summary</h3>
+      <div id="summary">Loading…</div>
+    </div>
+    <div class="card">
+      <h3>🎯 Priority Distribution</h3>
+      <canvas id="priorityChart" style="max-height:220px;"></canvas>
+    </div>
+  </div>
+
+  <div class="footer">Thread Library · Built with C + POSIX threads · CSE-316 CA2</div>
+
+<script>
+const palette={blue:'#38bdf8',purple:'#a78bfa',green:'#22c55e',orange:'#fb923c',red:'#ef4444',yellow:'#fbbf24'};
+let charts={};
+
+function makeChart(id,type,data,opts={}){
+  if(charts[id])charts[id].destroy();
+  charts[id]=new Chart(document.getElementById(id),{
+    type,data,
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#cbd5e1'}}},
+      scales:type==='line'||type==='bar'?{
+        x:{ticks:{color:'#94a3b8'},grid:{color:'#334155'}},
+        y:{ticks:{color:'#94a3b8'},grid:{color:'#334155'}}
+      }:{},
+      ...opts
+    }
+  });
+}
+
+async function fetchJSON(path){
+  try{const r=await fetch(path+'?t='+Date.now());if(!r.ok)throw 0;return await r.json();}
+  catch(e){return null;}
+}
+async function fetchCSV(path){
+  try{const r=await fetch(path+'?t='+Date.now());if(!r.ok)throw 0;return await r.text();}
+  catch(e){return null;}
+}
+
+function renderStats(m){
+  if(!m){document.getElementById('stats').innerHTML='<div class="card"><h3>No Data</h3><div class="val">—</div><div class="delta">Run benchmark first</div></div>';return;}
+  const sub=m.submitted??m.tasks_submitted??0;
+  const cmp=m.completed??m.tasks_completed??0;
+  const cards=[
+    {l:'Tasks Submitted',v:sub,d:'total queued'},
+    {l:'Tasks Completed',v:cmp,d:'successfully done'},
+    {l:'Failed',v:m.failed??m.tasks_failed??0,d:'errors'},
+    {l:'Cancelled',v:m.cancelled??0,d:'user cancelled'},
+    {l:'Live Threads',v:m.live_threads??'—',d:'currently active'},
+    {l:'Avg Wait (ms)',v:(m.avg_wait_ms||0).toFixed(2),d:'queue latency'},
+    {l:'Avg Exec (ms)',v:(m.avg_exec_ms||0).toFixed(2),d:'execution time'},
+    {l:'Throughput',v:(m.throughput||m.throughput_tps||0).toFixed(1),d:'tasks/sec'},
+  ];
+  document.getElementById('stats').innerHTML=cards.map(c=>
+    `<div class="card"><h3>${c.l}</h3><div class="val">${c.v}</div><div class="delta">${c.d}</div></div>`
+  ).join('');
+}
+
+function parseCSV(txt){
+  if(!txt)return [];
+  const lines=txt.trim().split('\n');
+  const head=lines[0].split(',');
+  return lines.slice(1).map(l=>{
+    const v=l.split(',');const o={};head.forEach((h,i)=>o[h.trim()]=v[i]);return o;
+  });
+}
+
+async function loadAll(){
+  document.getElementById('status').textContent='● LOADING';
+  document.getElementById('status').className='badge warn';
+
+  const latest=await fetchJSON('../build/metrics/latest_metrics.json');
+  const history=await fetchJSON('../build/metrics/history.json');
+  const comparison=await fetchJSON('../build/metrics/comparison.json');
+  const priority=await fetchJSON('../build/metrics/priority_metrics.json');
+  const tsText=await fetchCSV('../build/metrics/time_series.csv');
+  const ts=parseCSV(tsText);
+
+  renderStats(latest);
+
+  // Time-series charts
+  if(ts.length){
+    const labels=ts.map(r=>(+r.elapsed_sec).toFixed(2)+'s');
+    makeChart('queueChart','line',{
+      labels,
+      datasets:[{label:'Queue Depth',data:ts.map(r=>+r.queue_depth||0),borderColor:palette.orange,backgroundColor:palette.orange+'33',tension:.3,fill:true}]
+    });
+    makeChart('threadChart','line',{
+      labels,
+      datasets:[
+        {label:'Live Threads',data:ts.map(r=>+r.live_threads||0),borderColor:palette.blue,tension:.3},
+        {label:'Active Threads',data:ts.map(r=>+r.active_threads||0),borderColor:palette.purple,tension:.3}
+      ]
+    });
+    makeChart('completedChart','line',{
+      labels,
+      datasets:[{label:'Completed Tasks',data:ts.map(r=>+r.completed||0),borderColor:palette.green,backgroundColor:palette.green+'33',tension:.3,fill:true}]
+    });
+  } else {
+    ['queueChart','threadChart','completedChart'].forEach(id=>{
+      const c=document.getElementById(id);c.getContext('2d').fillStyle='#64748b';
+    });
+  }
+
+  // Comparison chart
+  if(comparison){
+    makeChart('compChart','bar',{
+      labels:['Sequential','Thread Pool'],
+      datasets:[{
+        label:'Time (seconds)',
+        data:[comparison.sequential_sec||comparison.sequential_time||0,comparison.pool_sec||comparison.pool_time||0],
+        backgroundColor:[palette.red,palette.green],
+        borderRadius:6
+      }]
+    });
+  }
+
+  // Priority / Task status doughnut
+  if(latest){
+    makeChart('priorityChart','doughnut',{
+      labels:['Completed','Cancelled','Failed'],
+      datasets:[{
+        data:[latest.completed||0,latest.cancelled||0,latest.failed||0],
+        backgroundColor:[palette.green,palette.yellow,palette.red]
+      }]
+    });
+  }
+
+  // Summary
+  const s=document.getElementById('summary');
+  if(latest){
+    s.innerHTML=`
+      <table>
+        <tr><th>Metric</th><th>Value</th></tr>
+        <tr><td>Elapsed Time</td><td><strong>${(latest.elapsed_sec||0).toFixed(2)} s</strong></td></tr>
+        <tr><td>Max Wait Time</td><td><strong>${(latest.max_wait_ms||0).toFixed(2)} ms</strong></td></tr>
+        <tr><td>Queue Depth</td><td><strong>${latest.queue_depth||0}</strong></td></tr>
+        <tr><td>Success Rate</td><td><strong>${(latest.submitted||latest.tasks_submitted)?(((latest.completed||latest.tasks_completed)/(latest.submitted||latest.tasks_submitted))*100).toFixed(1):0}%</strong></td></tr>
+        ${comparison?`<tr><td>Sequential Time</td><td><strong>${(comparison.sequential_sec||0).toFixed(3)} s</strong></td></tr>`:''}
+        ${comparison?`<tr><td>Pool Time</td><td><strong>${(comparison.pool_sec||0).toFixed(3)} s</strong></td></tr>`:''}
+        ${comparison?`<tr><td>Speedup</td><td><strong style="color:${palette.green}">${(comparison.speedup||0).toFixed(2)}x</strong></td></tr>`:''}
+      </table>`;
+  } else {
+    s.innerHTML='<em style="color:#64748b">Run <code>make run</code> then refresh.</em>';
+  }
+
+  document.getElementById('status').textContent='● LIVE';
+  document.getElementById('status').className='badge';
+}
+
+loadAll();
+setInterval(loadAll,5000);
+</script>
+</body>
+</html>
