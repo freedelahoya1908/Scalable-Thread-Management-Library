@@ -1,0 +1,6 @@
+── Logger started ──
+[18:26:42.144] INFO  main      t#a740 │ Starting Scalable Thread Management Library demo
+[18:26:42.316] INFO  demo      t#a740 │ Logger is thread-safe and supports levels
+[18:26:42.317] WARN  demo      t#a740 │ Simulated warning: task queue is 75% full
+[18:26:42.318] ERROR demo      t#a740 │ Simulated error: would log error here
+── Logger shutdown ──

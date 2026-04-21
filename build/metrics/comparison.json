@@ -1,0 +1,7 @@
+{
+  "sequential_sec": 0.153,
+  "pool_sec": 0.020,
+  "speedup": 7.73,
+  "threads": 16,
+  "tasks": 200
+}

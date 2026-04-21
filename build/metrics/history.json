@@ -1,0 +1,28 @@
+{
+  "snapshots": [
+    {"t":0.260,"completed":25,"queue":7,"active":8,"live":8,"throughput":96.14,"avg_wait_ms":71.682},
+    {"t":0.511,"completed":126,"queue":0,"active":0,"live":16,"throughput":246.59,"avg_wait_ms":47.835},
+    {"t":0.786,"completed":126,"queue":0,"active":0,"live":16,"throughput":160.31,"avg_wait_ms":47.835},
+    {"t":1.060,"completed":126,"queue":0,"active":0,"live":16,"throughput":118.81,"avg_wait_ms":47.835},
+    {"t":1.336,"completed":126,"queue":0,"active":0,"live":16,"throughput":94.33,"avg_wait_ms":47.835},
+    {"t":1.588,"completed":126,"queue":984,"active":16,"live":16,"throughput":79.33,"avg_wait_ms":47.835},
+    {"t":1.839,"completed":178,"queue":932,"active":16,"live":16,"throughput":96.79,"avg_wait_ms":57.725},
+    {"t":2.089,"completed":228,"queue":882,"active":16,"live":16,"throughput":109.13,"avg_wait_ms":115.488},
+    {"t":2.340,"completed":280,"queue":830,"active":16,"live":16,"throughput":119.67,"avg_wait_ms":199.872},
+    {"t":2.592,"completed":334,"queue":776,"active":16,"live":16,"throughput":128.87,"avg_wait_ms":301.175},
+    {"t":2.842,"completed":387,"queue":723,"active":16,"live":16,"throughput":136.16,"avg_wait_ms":407.767},
+    {"t":3.095,"completed":439,"queue":671,"active":16,"live":16,"throughput":141.86,"avg_wait_ms":516.171},
+    {"t":3.346,"completed":494,"queue":616,"active":16,"live":16,"throughput":147.66,"avg_wait_ms":633.607},
+    {"t":3.597,"completed":552,"queue":558,"active":16,"live":16,"throughput":153.48,"avg_wait_ms":759.339},
+    {"t":3.850,"completed":607,"queue":503,"active":16,"live":16,"throughput":157.67,"avg_wait_ms":879.999},
+    {"t":4.102,"completed":658,"queue":452,"active":16,"live":16,"throughput":160.42,"avg_wait_ms":993.588},
+    {"t":4.352,"completed":716,"queue":394,"active":16,"live":16,"throughput":164.51,"avg_wait_ms":1123.094},
+    {"t":4.604,"completed":768,"queue":342,"active":16,"live":16,"throughput":166.82,"avg_wait_ms":1239.782},
+    {"t":4.858,"completed":820,"queue":290,"active":16,"live":16,"throughput":168.78,"avg_wait_ms":1357.285},
+    {"t":5.110,"completed":876,"queue":234,"active":16,"live":16,"throughput":171.43,"avg_wait_ms":1485.190},
+    {"t":5.364,"completed":930,"queue":180,"active":16,"live":16,"throughput":173.38,"avg_wait_ms":1607.766},
+    {"t":5.622,"completed":985,"queue":125,"active":16,"live":16,"throughput":175.21,"avg_wait_ms":1733.041},
+    {"t":5.884,"completed":1038,"queue":72,"active":16,"live":16,"throughput":176.41,"avg_wait_ms":1854.336},
+    {"t":6.159,"completed":1096,"queue":14,"active":16,"live":16,"throughput":177.94,"avg_wait_ms":1987.979}
+  ]
+}
